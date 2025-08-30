@@ -1,31 +1,84 @@
-import { useState } from 'react'
+import React, { useState, useEffect } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import Dashboard from './components/Dashboard';
+import Login from './components/Login';
+import { authAPI } from './services/api';
+import './App.css';
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [user, setUser] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Check for existing session on app load
+  useEffect(() => {
+    const savedUser = localStorage.getItem('mangrove_admin_user');
+    if (savedUser) {
+      try {
+        setUser(JSON.parse(savedUser));
+      } catch (error) {
+        localStorage.removeItem('mangrove_admin_user');
+      }
+    }
+    setIsLoading(false);
+  }, []);
+
+  const handleLogin = (userData) => {
+    setUser(userData);
+    localStorage.setItem('mangrove_admin_user', JSON.stringify(userData));
+  };
+
+  const handleLogout = async () => {
+    try {
+      // Call the logout API to clear server-side session
+      await authAPI.adminLogout();
+    } catch (error) {
+      console.error('Logout API error:', error);
+      // Continue with logout even if API call fails
+    } finally {
+      // Clear local state and storage
+      setUser(null);
+      localStorage.removeItem('mangrove_admin_user');
+    }
+  };
+
+  // Show loading spinner while checking authentication
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-blue-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-12 h-12 border-4 border-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600 font-medium">Loading Mangrove Watch...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 text-center">
-      <h1 className="text-4xl font-bold text-blue-600 mb-6">
-        Vite + React + Tailwind
-      </h1>
-
-      <div className="bg-white shadow-lg rounded-2xl p-6">
-        <button
-          onClick={() => setCount((count) => count + 1)}
-          className="px-6 py-2 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600 transition"
-        >
-          Count is {count}
-        </button>
-        <p className="mt-4 text-gray-600">
-          Edit <code className="bg-gray-200 px-1 rounded">src/App.jsx</code> and save to test HMR
-        </p>
+    <Router>
+      <div className="App">
+        <Routes>
+          <Route
+            path="/login"
+            element={
+              user ? <Navigate to="/dashboard" replace /> : <Login onLogin={handleLogin} />
+            }
+          />
+          <Route
+            path="/dashboard"
+            element={
+              user ? <Dashboard user={user} onLogout={handleLogout} /> : <Navigate to="/login" replace />
+            }
+          />
+          <Route
+            path="/"
+            element={
+              user ? <Navigate to="/dashboard" replace /> : <Navigate to="/login" replace />
+            }
+          />
+        </Routes>
       </div>
-
-      <p className="mt-6 text-sm text-gray-500">
-        Tailwind CSS is working! 🎉
-      </p>
-    </div>
-  )
+    </Router>
+  );
 }
 
-export default App
+export default App;

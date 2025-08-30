@@ -13,7 +13,13 @@
     "@tailwindcss/vite": "^4.1.12",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "tailwindcss": "^4.1.12"
+    "tailwindcss": "^4.1.12",
+    "react-router-dom": "^6.28.0",
+    "leaflet": "^1.9.4",
+    "react-leaflet": "^4.2.1",
+    "lucide-react": "^0.460.0",
+    "recharts": "^2.12.7",
+    "axios": "^1.7.7"
   },
   "devDependencies": {
     "@eslint/js": "^9.33.0",
