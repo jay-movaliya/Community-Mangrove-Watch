@@ -1,11 +1,32 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
-  PieChart, Pie, Cell, LineChart, Line, AreaChart, Area, Legend
+  PieChart, Pie, Cell, AreaChart, Area
 } from 'recharts';
-import { TrendingUp, BarChart3, PieChart as PieChartIcon, Activity, Filter } from 'lucide-react';
+import { TrendingUp, BarChart3, PieChart as PieChartIcon, Calendar } from 'lucide-react';
+import { reportsAPI } from '../services/api';
 
 const Charts = ({ reports }) => {
+  const [monthlyData, setMonthlyData] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    loadMonthlyData();
+  }, []);
+
+  const loadMonthlyData = async () => {
+    try {
+      setLoading(true);
+      const response = await reportsAPI.getMonthlyReports();
+      if (response.success && response.data) {
+        setMonthlyData(response.data);
+      }
+    } catch (error) {
+      console.error('Error loading monthly data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Prepare data for charts
   const reportsByType = reports.reduce((acc, report) => {
@@ -40,12 +61,16 @@ const Charts = ({ reports }) => {
     }
   ];
 
-  // Enhanced weekly trend data
-  const weeklyData = [
-    { week: 'Week 1', reports: 12, accepted: 8, rejected: 2, pending: 2 },
-    { week: 'Week 2', reports: 19, accepted: 14, rejected: 3, pending: 2 },
-    { week: 'Week 3', reports: 8, accepted: 6, rejected: 1, pending: 1 },
-    { week: 'Week 4', reports: 15, accepted: 11, rejected: 2, pending: 2 },
+  // Use real monthly data or fallback
+  const chartMonthlyData = monthlyData.length > 0 ? monthlyData : [
+    { month: 'Jan', reports: 0, accepted: 0, rejected: 0, pending: 0 },
+    { month: 'Feb', reports: 0, accepted: 0, rejected: 0, pending: 0 },
+    { month: 'Mar', reports: 0, accepted: 0, rejected: 0, pending: 0 },
+    { month: 'Apr', reports: 0, accepted: 0, rejected: 0, pending: 0 },
+    { month: 'May', reports: 0, accepted: 0, rejected: 0, pending: 0 },
+    { month: 'Jun', reports: 0, accepted: 0, rejected: 0, pending: 0 },
+    { month: 'Jul', reports: 0, accepted: 0, rejected: 0, pending: 0 },
+    { month: 'Current', reports: reports.length, accepted: reports.filter(r => r.status === 'accepted').length, rejected: reports.filter(r => r.status === 'rejected').length, pending: reports.filter(r => r.status === 'pending').length }
   ];
 
   // Custom tooltip component
@@ -176,7 +201,7 @@ const Charts = ({ reports }) => {
           </div>
 
           <ResponsiveContainer width="100%" height={200}>
-            <AreaChart data={weeklyData} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
+            <AreaChart data={chartMonthlyData} margin={{ top: 10, right: 10, left: 10, bottom: 5 }}>
               <defs>
                 <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.3}/>
@@ -207,37 +232,7 @@ const Charts = ({ reports }) => {
         </div>
       </div>
 
-      {/* Summary Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="text-center p-4 bg-green-50 rounded-xl">
-          <div className="flex items-center justify-center w-8 h-8 bg-green-100 rounded-lg mx-auto mb-2">
-            <TrendingUp className="h-4 w-4 text-green-600" />
-          </div>
-          <p className="text-lg font-bold text-green-700">+15%</p>
-          <p className="text-xs text-green-600 font-medium">Growth Rate</p>
-        </div>
-        <div className="text-center p-4 bg-blue-50 rounded-xl">
-          <div className="flex items-center justify-center w-8 h-8 bg-blue-100 rounded-lg mx-auto mb-2">
-            <Activity className="h-4 w-4 text-blue-600" />
-          </div>
-          <p className="text-lg font-bold text-blue-700">54</p>
-          <p className="text-xs text-blue-600 font-medium">This Month</p>
-        </div>
-        <div className="text-center p-4 bg-purple-50 rounded-xl">
-          <div className="flex items-center justify-center w-8 h-8 bg-purple-100 rounded-lg mx-auto mb-2">
-            <BarChart3 className="h-4 w-4 text-purple-600" />
-          </div>
-          <p className="text-lg font-bold text-purple-700">13.5</p>
-          <p className="text-xs text-purple-600 font-medium">Avg/Week</p>
-        </div>
-        <div className="text-center p-4 bg-orange-50 rounded-xl">
-          <div className="flex items-center justify-center w-8 h-8 bg-orange-100 rounded-lg mx-auto mb-2">
-            <Filter className="h-4 w-4 text-orange-600" />
-          </div>
-          <p className="text-lg font-bold text-orange-700">94.2%</p>
-          <p className="text-xs text-orange-600 font-medium">Accuracy</p>
-        </div>
-      </div>
+  
     </div>
   );
 };

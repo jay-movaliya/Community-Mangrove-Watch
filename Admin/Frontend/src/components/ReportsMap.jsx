@@ -10,7 +10,7 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
 
-const ReportsMap = ({ reports, fullScreen = false }) => {
+const ReportsMap = ({ reports = [], fullScreen = false, isLoading = false }) => {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const [searchQuery, setSearchQuery] = React.useState('');
@@ -121,73 +121,137 @@ const ReportsMap = ({ reports, fullScreen = false }) => {
       });
     };
 
-    // Add markers for each report
-    reports.forEach(report => {
-      const marker = L.marker([report.location.lat, report.location.lng], {
-        icon: getMarkerIcon(report)
-      }).addTo(map);
-
-      // Create popup content with enhanced features
-      const popupContent = `
-        <div class="p-3 min-w-[280px]">
-          <h3 class="font-bold text-lg mb-2 text-gray-800">${report.type}</h3>
-          <p class="text-sm text-gray-600 mb-2 flex items-center">
-            <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-              <path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd"></path>
-            </svg>
-            ${report.location.name}
-          </p>
-          <p class="text-sm mb-3 text-gray-700">${report.description}</p>
-          
-          <div class="grid grid-cols-2 gap-2 mb-3 text-xs">
-            <div class="text-gray-500">
-              <span class="font-medium">Reporter:</span><br>
-              ${report.reporter}
-            </div>
-            <div class="text-gray-500">
-              <span class="font-medium">Date:</span><br>
-              ${report.date}
-            </div>
-          </div>
-          
-          <div class="flex justify-between items-center mb-3">
-            <span class="px-2 py-1 rounded text-xs font-medium ${
-              report.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-              report.status === 'accepted' ? 'bg-green-100 text-green-800' :
-              'bg-red-100 text-red-800'
-            }">
-              ${report.status.charAt(0).toUpperCase() + report.status.slice(1)}
-            </span>
-            <span class="px-2 py-1 rounded text-xs font-medium ${
-              report.severity === 'high' ? 'bg-red-100 text-red-800' :
-              report.severity === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-              'bg-green-100 text-green-800'
-            }">
-              ${report.severity.charAt(0).toUpperCase() + report.severity.slice(1)} Priority
-            </span>
-          </div>
-          
-          <div class="flex space-x-2">
-            <button 
-              onclick="window.open('https://www.google.com/maps/dir/?api=1&destination=${report.location.lat},${report.location.lng}', '_blank')"
-              class="flex-1 bg-green-500 hover:bg-green-600 text-white text-xs py-2 px-3 rounded font-medium transition-colors"
-            >
-              Get Directions
-            </button>
-            <button 
-              onclick="navigator.geolocation.getCurrentPosition(function(pos) { 
-                window.open('https://www.openrouteservice.org/directions?n1=${report.location.lat}&n2=${report.location.lng}&n3=16&a=' + pos.coords.latitude + ',' + pos.coords.longitude + ',${report.location.lat},${report.location.lng}&b=0&c=0&k1=en-US&k2=km', '_blank')
-              })"
-              class="flex-1 bg-blue-500 hover:bg-blue-600 text-white text-xs py-2 px-3 rounded font-medium transition-colors"
-            >
-              Route (ORS)
-            </button>
-          </div>
-        </div>
-      `;
-
-      marker.bindPopup(popupContent);
+    // Clear existing markers first
+    map.eachLayer((layer) => {
+      if (layer instanceof L.Marker) {
+        map.removeLayer(layer);
+      }
     });
+
+    console.log('📍 Adding markers for', reports.length, 'reports');
+
+    // Add markers for each report
+    reports.forEach((report, index) => {
+      // Ensure coordinates are valid numbers
+      const lat = typeof report.location?.lat === 'number' ? report.location.lat : parseFloat(report.location?.lat || 0);
+      const lng = typeof report.location?.lng === 'number' ? report.location.lng : parseFloat(report.location?.lng || 0);
+      
+      console.log(`📍 Report ${index + 1}:`, {
+        id: report.id,
+        type: report.type,
+        lat: lat,
+        lng: lng,
+        status: report.status,
+        originalLat: report.location?.lat,
+        originalLng: report.location?.lng
+      });
+      
+      // Skip invalid coordinates
+      if (isNaN(lat) || isNaN(lng)) {
+        console.warn('❌ Invalid coordinates for report:', report.id, { lat, lng, original: report.location });
+        return;
+      }
+
+      // Skip coordinates that are exactly 0,0 (likely invalid)
+      if (lat === 0 && lng === 0) {
+        console.warn('⚠️ Zero coordinates for report:', report.id);
+        return;
+      }
+      
+      try {
+        const marker = L.marker([lat, lng], {
+          icon: getMarkerIcon(report)
+        }).addTo(map);
+
+        console.log('✅ Marker added for report:', report.id, 'at', [lat, lng]);
+
+        // Create popup content with enhanced features
+        const popupContent = `
+          <div class="p-3 min-w-[280px]">
+            <h3 class="font-bold text-lg mb-2 text-gray-800">${report.type || 'Unknown Type'}</h3>
+            <p class="text-sm text-gray-600 mb-2 flex items-center">
+              <svg class="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd"></path>
+              </svg>
+              ${report.location?.name || 'Unknown Location'}
+            </p>
+            <p class="text-sm mb-3 text-gray-700">${report.description || 'No description available'}</p>
+            
+            <div class="grid grid-cols-2 gap-2 mb-3 text-xs">
+              <div class="text-gray-500">
+                <span class="font-medium">Reporter:</span><br>
+                ${report.reporter || 'Anonymous'}
+              </div>
+              <div class="text-gray-500">
+                <span class="font-medium">Date:</span><br>
+                ${report.date || 'Unknown'}
+              </div>
+            </div>
+            
+            <div class="flex justify-between items-center mb-3">
+              <span class="px-2 py-1 rounded text-xs font-medium ${
+                (report.status || 'pending') === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                (report.status || 'pending') === 'accepted' ? 'bg-green-100 text-green-800' :
+                'bg-red-100 text-red-800'
+              }">
+                ${((report.status || 'pending').charAt(0).toUpperCase() + (report.status || 'pending').slice(1))}
+              </span>
+              <span class="text-xs text-gray-500">
+                Points: ${report.points || 0}
+              </span>
+            </div>
+            
+            <div class="flex space-x-2">
+              <button 
+                onclick="window.open('https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}', '_blank')"
+                class="flex-1 bg-green-500 hover:bg-green-600 text-white text-xs py-2 px-3 rounded font-medium transition-colors"
+              >
+                Get Directions
+              </button>
+              <button 
+                onclick="navigator.geolocation.getCurrentPosition(function(pos) { 
+                  window.open('https://www.openrouteservice.org/directions?n1=${lat}&n2=${lng}&n3=16&a=' + pos.coords.latitude + ',' + pos.coords.longitude + ',${lat},${lng}&b=0&c=0&k1=en-US&k2=km', '_blank')
+                })"
+                class="flex-1 bg-blue-500 hover:bg-blue-600 text-white text-xs py-2 px-3 rounded font-medium transition-colors"
+              >
+                Route (ORS)
+              </button>
+            </div>
+          </div>
+        `;
+
+        marker.bindPopup(popupContent);
+      } catch (error) {
+        console.error('❌ Error creating marker for report:', report.id, error);
+      }
+    });
+
+    // Auto-fit map to show all markers if there are reports
+    if (reports.length > 0) {
+      const validReports = reports.filter(report => {
+        const lat = parseFloat(report.location?.lat || 0);
+        const lng = parseFloat(report.location?.lng || 0);
+        return !isNaN(lat) && !isNaN(lng) && !(lat === 0 && lng === 0);
+      });
+
+      if (validReports.length > 0) {
+        const group = new L.featureGroup(
+          validReports.map(report => {
+            const lat = parseFloat(report.location.lat);
+            const lng = parseFloat(report.location.lng);
+            return L.marker([lat, lng]);
+          })
+        );
+        
+        try {
+          map.fitBounds(group.getBounds().pad(0.1));
+          console.log('🗺️ Map bounds adjusted to fit', validReports.length, 'markers');
+        } catch (error) {
+          console.warn('⚠️ Could not fit bounds, using default view');
+          map.setView([23.6850, 90.3563], 7);
+        }
+      }
+    }
 
     // Cleanup function
     return () => {
@@ -212,7 +276,7 @@ const ReportsMap = ({ reports, fullScreen = false }) => {
             <div className="relative">
               <input
                 type="text"
-                placeholder="Search locations in Bangladesh..."
+                placeholder="Search locations in India..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && searchLocation(searchQuery)}
@@ -235,10 +299,38 @@ const ReportsMap = ({ reports, fullScreen = false }) => {
           </div>
         </div>
       </div>
-      <div 
-        ref={mapRef} 
-        className={`w-full ${fullScreen ? 'h-[calc(100vh-200px)]' : 'h-96'} rounded-b-xl`}
-      />
+      <div className="relative">
+        <div 
+          ref={mapRef} 
+          className={`w-full ${fullScreen ? 'h-[calc(100vh-200px)]' : 'h-96'} rounded-b-xl`}
+        />
+        
+        {/* Loading Overlay */}
+        {isLoading && (
+          <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center rounded-b-xl">
+            <div className="text-center">
+              <div className="w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+              <p className="text-sm text-gray-600">Loading reports...</p>
+            </div>
+          </div>
+        )}
+        
+        {/* Empty State */}
+        {!isLoading && reports.length === 0 && (
+          <div className="absolute inset-0 bg-white bg-opacity-90 flex items-center justify-center rounded-b-xl">
+            <div className="text-center">
+              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-medium text-gray-800 mb-2">No Reports Found</h3>
+              <p className="text-sm text-gray-600">There are currently no reports to display on the map.</p>
+            </div>
+          </div>
+        )}
+      </div>
       
       {/* Legend and Controls */}
       <div className="p-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
@@ -246,15 +338,26 @@ const ReportsMap = ({ reports, fullScreen = false }) => {
           <div className="flex items-center space-x-6 text-sm">
             <div className="flex items-center space-x-2">
               <div className="w-4 h-4 bg-yellow-400 rounded-full border-2 border-white shadow"></div>
-              <span className="text-gray-600">Pending ({reports.filter(r => r.status === 'pending').length})</span>
+              <span className="text-gray-600">
+                Pending ({reports.filter(r => (r.status || 'pending') === 'pending').length})
+              </span>
             </div>
             <div className="flex items-center space-x-2">
               <div className="w-4 h-4 bg-green-500 rounded-full border-2 border-white shadow"></div>
-              <span className="text-gray-600">Accepted ({reports.filter(r => r.status === 'accepted').length})</span>
+              <span className="text-gray-600">
+                Accepted ({reports.filter(r => (r.status || 'pending') === 'accepted').length})
+              </span>
             </div>
             <div className="flex items-center space-x-2">
               <div className="w-4 h-4 bg-red-500 rounded-full border-2 border-white shadow"></div>
-              <span className="text-gray-600">Rejected ({reports.filter(r => r.status === 'rejected').length})</span>
+              <span className="text-gray-600">
+                Rejected ({reports.filter(r => (r.status || 'pending') === 'rejected').length})
+              </span>
+            </div>
+            <div className="flex items-center space-x-2">
+              <span className="text-gray-500 font-medium">
+                Total: {reports.length} reports
+              </span>
             </div>
           </div>
           

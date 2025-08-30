@@ -18,7 +18,7 @@ const ReportsTable = ({ reports, onReportAction }) => {
   const [filter, setFilter] = useState('all');
   const [selectedReport, setSelectedReport] = useState(null);
 
-  const filteredReports = reports.filter(report => {
+  const filteredReports = (reports || []).filter(report => {
     if (filter === 'all') return true;
     return report.status === filter;
   });
@@ -105,18 +105,14 @@ const ReportsTable = ({ reports, onReportAction }) => {
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Report Details
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Location
-              </th>
+       
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Reporter
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Status
               </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Severity
-              </th>
+             
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Actions
               </th>
@@ -151,9 +147,9 @@ const ReportsTable = ({ reports, onReportAction }) => {
                   <div className="flex items-center text-sm text-gray-900">
                     <MapPin className="h-4 w-4 text-gray-400 mr-2" />
                     <div>
-                      <div className="font-medium">{report.location.name}</div>
+
                       <div className="text-xs text-gray-500">
-                        {report.location.lat.toFixed(4)}, {report.location.lng.toFixed(4)}
+                        {typeof report.location?.lat === 'number' ? report.location.lat.toFixed(4) : parseFloat(report.location?.lat || 0).toFixed(4)}, {typeof report.location?.lng === 'number' ? report.location.lng.toFixed(4) : parseFloat(report.location?.lng || 0).toFixed(4)}
                       </div>
                     </div>
                   </div>
@@ -172,17 +168,12 @@ const ReportsTable = ({ reports, onReportAction }) => {
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="flex items-center">
                     {getStatusIcon(report.status)}
-                    <span className={`ml-2 px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(report.status)}`}>
-                      {report.status.charAt(0).toUpperCase() + report.status.slice(1)}
+                    <span className={`ml-2 px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(report.status || 'unknown')}`}>
+                      {(report.status || 'unknown').charAt(0).toUpperCase() + (report.status || 'unknown').slice(1)}
                     </span>
                   </div>
                 </td>
-                
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`px-2 py-1 text-xs font-medium rounded-full ${getSeverityColor(report.severity)}`}>
-                    {report.severity.charAt(0).toUpperCase() + report.severity.slice(1)}
-                  </span>
-                </td>
+
                 
                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                   <div className="flex items-center space-x-2">
@@ -254,9 +245,9 @@ const ReportsTable = ({ reports, onReportAction }) => {
                   
                   <div>
                     <label className="text-sm font-medium text-gray-500">Location</label>
-                    <p className="text-gray-800">{selectedReport.location.name}</p>
+                    <p className="text-gray-800">{selectedReport.location?.name || 'Unknown Location'}</p>
                     <p className="text-sm text-gray-500">
-                      {selectedReport.location.lat.toFixed(6)}, {selectedReport.location.lng.toFixed(6)}
+                      {(selectedReport.location?.lat || 0).toFixed(6)}, {(selectedReport.location?.lng || 0).toFixed(6)}
                     </p>
                   </div>
                   
@@ -275,20 +266,12 @@ const ReportsTable = ({ reports, onReportAction }) => {
                       <label className="text-sm font-medium text-gray-500">Status</label>
                       <div className="flex items-center mt-1">
                         {getStatusIcon(selectedReport.status)}
-                        <span className={`ml-2 px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(selectedReport.status)}`}>
-                          {selectedReport.status.charAt(0).toUpperCase() + selectedReport.status.slice(1)}
+                        <span className={`ml-2 px-2 py-1 text-xs font-medium rounded-full ${getStatusColor(selectedReport.status || 'unknown')}`}>
+                          {(selectedReport.status || 'unknown').charAt(0).toUpperCase() + (selectedReport.status || 'unknown').slice(1)}
                         </span>
                       </div>
                     </div>
-                    
-                    <div>
-                      <label className="text-sm font-medium text-gray-500">Severity</label>
-                      <div className="mt-1">
-                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${getSeverityColor(selectedReport.severity)}`}>
-                          {selectedReport.severity.charAt(0).toUpperCase() + selectedReport.severity.slice(1)}
-                        </span>
-                      </div>
-                    </div>
+              
                   </div>
                 </div>
               </div>

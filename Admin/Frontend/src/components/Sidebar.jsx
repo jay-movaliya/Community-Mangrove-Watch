@@ -28,7 +28,6 @@ const Sidebar = ({ activeTab, setActiveTab, user }) => {
       id: 'reports', 
       label: 'Reports', 
       icon: FileText, 
-      badge: '23',
       description: 'Manage incident reports'
     },
     { 
@@ -48,8 +47,7 @@ const Sidebar = ({ activeTab, setActiveTab, user }) => {
     { 
       id: 'users', 
       label: 'Community', 
-      icon: Users, 
-      badge: '1.2k',
+      icon: Users,
       description: 'User management'
     },
   ];
@@ -69,32 +67,7 @@ const Sidebar = ({ activeTab, setActiveTab, user }) => {
         </div>
       </div>
 
-      {/* Quick Stats */}
-      <div className="p-4 bg-gradient-to-r from-green-50 to-blue-50 border-b border-gray-200">
-        <div className="grid grid-cols-3 gap-3">
-          <div className="text-center">
-            <div className="flex items-center justify-center w-8 h-8 bg-green-100 rounded-lg mx-auto mb-1">
-              <Activity className="h-4 w-4 text-green-600" />
-            </div>
-            <p className="text-xs font-semibold text-gray-700">156</p>
-            <p className="text-xs text-gray-500">Reports</p>
-          </div>
-          <div className="text-center">
-            <div className="flex items-center justify-center w-8 h-8 bg-blue-100 rounded-lg mx-auto mb-1">
-              <Users className="h-4 w-4 text-blue-600" />
-            </div>
-            <p className="text-xs font-semibold text-gray-700">1.2k</p>
-            <p className="text-xs text-gray-500">Users</p>
-          </div>
-          <div className="text-center">
-            <div className="flex items-center justify-center w-8 h-8 bg-yellow-100 rounded-lg mx-auto mb-1">
-              <Award className="h-4 w-4 text-yellow-600" />
-            </div>
-            <p className="text-xs font-semibold text-gray-700">94%</p>
-            <p className="text-xs text-gray-500">Accuracy</p>
-          </div>
-        </div>
-      </div>
+
 
       {/* Navigation */}
       <nav className="flex-1 p-4 overflow-y-auto">

@@ -1,21 +1,25 @@
-import React from 'react';
-import { 
-  TrendingUp, 
-  TrendingDown, 
-  Users, 
-  MapPin, 
+import React, { useState, useEffect } from 'react';
+import {
+  TrendingUp,
+  TrendingDown,
+  Users,
+  MapPin,
   Clock,
   Award,
   AlertTriangle,
-  CheckCircle
+  CheckCircle,
+  Calendar,
+  Target,
+  Activity,
+  BarChart3
 } from 'lucide-react';
-import { 
-  AreaChart, 
-  Area, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
   ResponsiveContainer,
   BarChart,
   Bar,
@@ -25,77 +29,140 @@ import {
   LineChart,
   Line
 } from 'recharts';
+import { reportsAPI, usersAPI } from '../services/api';
 
 const Analytics = () => {
-  // Sample data for analytics
-  const monthlyReports = [
-    { month: 'Jan', reports: 45, accepted: 32, rejected: 8, pending: 5 },
-    { month: 'Feb', reports: 52, accepted: 38, rejected: 9, pending: 5 },
-    { month: 'Mar', reports: 48, accepted: 35, rejected: 7, pending: 6 },
-    { month: 'Apr', reports: 61, accepted: 44, rejected: 10, pending: 7 },
-    { month: 'May', reports: 55, accepted: 40, rejected: 9, pending: 6 },
-    { month: 'Jun', reports: 67, accepted: 48, rejected: 12, pending: 7 }
+  const [reports, setReports] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [monthlyReports, setMonthlyReports] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    loadAnalyticsData();
+  }, []);
+
+  const loadAnalyticsData = async () => {
+    try {
+      setLoading(true);
+      const [reportsResponse, usersResponse, monthlyResponse] = await Promise.all([
+        reportsAPI.getAllReports(),
+        usersAPI.getAllUsers(),
+        reportsAPI.getMonthlyReports()
+      ]);
+
+      if (reportsResponse.success) {
+        setReports(reportsResponse.data || []);
+      }
+      if (usersResponse.success) {
+        setUsers(usersResponse.data || []);
+      }
+      if (monthlyResponse.success) {
+        setMonthlyReports(monthlyResponse.data || []);
+      }
+    } catch (error) {
+      console.error('Error loading analytics data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Calculate real-time analytics
+  const totalReports = reports.length;
+  const pendingReports = reports.filter(r => r.status === 'pending').length;
+  const acceptedReports = reports.filter(r => r.status === 'accepted').length;
+  const rejectedReports = reports.filter(r => r.status === 'rejected').length;
+  const totalUsers = users.length;
+  const activeUsers = users.filter(u => u.status === 'active').length;
+  const totalPoints = users.reduce((sum, user) => sum + (user.points || 0), 0);
+
+  // Use real monthly data from API, fallback to sample data if empty
+  const monthlyData = monthlyReports.length > 0 ? monthlyReports : [
+    { month: 'Jan', reports: 0, accepted: 0, rejected: 0, pending: 0 },
+    { month: 'Feb', reports: 0, accepted: 0, rejected: 0, pending: 0 },
+    { month: 'Mar', reports: 0, accepted: 0, rejected: 0, pending: 0 },
+    { month: 'Apr', reports: 0, accepted: 0, rejected: 0, pending: 0 },
+    { month: 'May', reports: 0, accepted: 0, rejected: 0, pending: 0 },
+    { month: 'Jun', reports: 0, accepted: 0, rejected: 0, pending: 0 },
+    { month: 'Jul', reports: 0, accepted: 0, rejected: 0, pending: 0 },
+    { month: 'Current', reports: totalReports, accepted: acceptedReports, rejected: rejectedReports, pending: pendingReports }
   ];
 
-  const reportTypes = [
-    { name: 'Illegal Cutting', value: 45, color: '#ef4444' },
-    { name: 'Waste Dumping', value: 32, color: '#f59e0b' },
-    { name: 'Pollution', value: 28, color: '#8b5cf6' },
-    { name: 'Other', value: 15, color: '#6b7280' }
-  ];
+  // Report types from real data
+  const reportTypesCount = reports.reduce((acc, report) => {
+    const type = report.type || 'Other';
+    acc[type] = (acc[type] || 0) + 1;
+    return acc;
+  }, {});
 
-  const locationData = [
-    { location: 'Sundarbans', reports: 34, severity: 'high' },
-    { location: 'Cox\'s Bazar', reports: 28, severity: 'medium' },
-    { location: 'Khulna', reports: 22, severity: 'high' },
-    { location: 'Teknaf', reports: 18, severity: 'low' },
-    { location: 'Dhaka Coast', reports: 15, severity: 'medium' }
-  ];
+  const reportTypes = Object.entries(reportTypesCount).map(([name, value], index) => ({
+    name,
+    value,
+    color: ['#22c55e', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6', '#6b7280'][index % 6]
+  }));
 
-  const responseTimeData = [
-    { day: 'Mon', avgTime: 2.3 },
-    { day: 'Tue', avgTime: 1.8 },
-    { day: 'Wed', avgTime: 2.1 },
-    { day: 'Thu', avgTime: 1.9 },
-    { day: 'Fri', avgTime: 2.4 },
-    { day: 'Sat', avgTime: 3.1 },
-    { day: 'Sun', avgTime: 2.8 }
-  ];
+  // Top locations from real data
+  const locationCounts = reports.reduce((acc, report) => {
+    const location = report.location?.name || 'Unknown Location';
+    acc[location] = (acc[location] || 0) + 1;
+    return acc;
+  }, {});
+
+  const topLocations = Object.entries(locationCounts)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 5)
+    .map(([location, count]) => ({ location, reports: count }));
+
+  // Calculate acceptance rate
+  const acceptanceRate = totalReports > 0 ? ((acceptedReports / totalReports) * 100).toFixed(1) : 0;
+  const userEngagement = totalUsers > 0 ? ((activeUsers / totalUsers) * 100).toFixed(1) : 0;
 
   const kpiCards = [
     {
-      title: 'Average Response Time',
-      value: '2.3 hours',
-      change: '-15%',
-      changeType: 'decrease',
-      icon: Clock,
-      color: 'blue'
+      title: 'Total Reports',
+      value: totalReports.toString(),
+      subtitle: `${pendingReports} pending`,
+      icon: BarChart3,
+      color: 'blue',
+      bgColor: 'bg-blue-50',
+      textColor: 'text-blue-600'
     },
     {
-      title: 'User Engagement',
-      value: '89%',
-      change: '+12%',
-      changeType: 'increase',
+      title: 'Active Users',
+      value: activeUsers.toString(),
+      subtitle: `${userEngagement}% engagement`,
       icon: Users,
-      color: 'green'
+      color: 'green',
+      bgColor: 'bg-green-50',
+      textColor: 'text-green-600'
     },
     {
-      title: 'Report Accuracy',
-      value: '94.2%',
-      change: '+3%',
-      changeType: 'increase',
+      title: 'Acceptance Rate',
+      value: `${acceptanceRate}%`,
+      subtitle: `${acceptedReports} accepted`,
       icon: CheckCircle,
-      color: 'green'
+      color: 'emerald',
+      bgColor: 'bg-emerald-50',
+      textColor: 'text-emerald-600'
     },
     {
-      title: 'Critical Incidents',
-      value: '23',
-      change: '+8%',
-      changeType: 'increase',
-      icon: AlertTriangle,
-      color: 'red'
+      title: 'Total Points',
+      value: totalPoints.toString(),
+      subtitle: 'Community rewards',
+      icon: Award,
+      color: 'yellow',
+      bgColor: 'bg-yellow-50',
+      textColor: 'text-yellow-600'
     }
   ];
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500"></div>
+        <span className="ml-4 text-gray-600">Loading analytics...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -104,27 +171,15 @@ const Analytics = () => {
         {kpiCards.map((kpi, index) => {
           const Icon = kpi.icon;
           return (
-            <div key={index} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            <div key={index} className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between">
-                <div>
+                <div className="flex-1">
                   <p className="text-sm font-medium text-gray-600 mb-1">{kpi.title}</p>
-                  <p className="text-2xl font-bold text-gray-900">{kpi.value}</p>
-                  <div className="flex items-center mt-2">
-                    {kpi.changeType === 'increase' ? (
-                      <TrendingUp className="h-4 w-4 text-green-500 mr-1" />
-                    ) : (
-                      <TrendingDown className="h-4 w-4 text-red-500 mr-1" />
-                    )}
-                    <span className={`text-sm font-medium ${
-                      kpi.changeType === 'increase' ? 'text-green-600' : 'text-red-600'
-                    }`}>
-                      {kpi.change}
-                    </span>
-                    <span className="text-sm text-gray-500 ml-1">vs last month</span>
-                  </div>
+                  <p className="text-3xl font-bold text-gray-900 mb-1">{kpi.value}</p>
+                  <p className="text-sm text-gray-500">{kpi.subtitle}</p>
                 </div>
-                <div className={`bg-${kpi.color}-50 p-3 rounded-lg`}>
-                  <Icon className={`h-6 w-6 text-${kpi.color}-600`} />
+                <div className={`${kpi.bgColor} p-3 rounded-xl`}>
+                  <Icon className={`h-8 w-8 ${kpi.textColor}`} />
                 </div>
               </div>
             </div>
@@ -136,19 +191,47 @@ const Analytics = () => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Monthly Reports Trend */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">Monthly Reports Trend</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-800">Monthly Reports Trend</h3>
+            <button
+              onClick={loadAnalyticsData}
+              className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+            >
+              Refresh
+            </button>
+          </div>
           <ResponsiveContainer width="100%" height={300}>
-            <AreaChart data={monthlyReports}>
+            <AreaChart data={monthlyData}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="month" />
               <YAxis />
-              <Tooltip />
-              <Area 
-                type="monotone" 
-                dataKey="reports" 
-                stroke="#22c55e" 
-                fill="#22c55e" 
+              <Tooltip 
+                formatter={(value, name) => [value, name === 'reports' ? 'Total Reports' : name]}
+                labelFormatter={(label) => `Month: ${label}`}
+              />
+              <Area
+                type="monotone"
+                dataKey="reports"
+                stroke="#22c55e"
+                fill="#22c55e"
                 fillOpacity={0.3}
+                name="Reports"
+              />
+              <Area
+                type="monotone"
+                dataKey="accepted"
+                stroke="#3b82f6"
+                fill="#3b82f6"
+                fillOpacity={0.2}
+                name="Accepted"
+              />
+              <Area
+                type="monotone"
+                dataKey="pending"
+                stroke="#f59e0b"
+                fill="#f59e0b"
+                fillOpacity={0.2}
+                name="Pending"
               />
             </AreaChart>
           </ResponsiveContainer>
@@ -178,8 +261,8 @@ const Analytics = () => {
           <div className="grid grid-cols-2 gap-2 mt-4">
             {reportTypes.map((type, index) => (
               <div key={index} className="flex items-center space-x-2">
-                <div 
-                  className="w-3 h-3 rounded-full" 
+                <div
+                  className="w-3 h-3 rounded-full"
                   style={{ backgroundColor: type.color }}
                 ></div>
                 <span className="text-sm text-gray-600">{type.name} ({type.value})</span>
@@ -191,100 +274,137 @@ const Analytics = () => {
 
       {/* Charts Row 2 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Reports by Location */}
+        {/* Status Breakdown */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">Reports by Location</h3>
+          <h3 className="text-lg font-semibold text-gray-800 mb-4">Report Status Breakdown</h3>
           <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={locationData} layout="horizontal">
+            <BarChart data={[
+              { status: 'Accepted', count: acceptedReports, color: '#22c55e' },
+              { status: 'Pending', count: pendingReports, color: '#f59e0b' },
+              { status: 'Rejected', count: rejectedReports, color: '#ef4444' }
+            ]}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis type="number" />
-              <YAxis dataKey="location" type="category" width={80} />
+              <XAxis dataKey="status" />
+              <YAxis />
               <Tooltip />
-              <Bar dataKey="reports" fill="#22c55e" radius={[0, 4, 4, 0]} />
+              <Bar dataKey="count" fill="#22c55e" />
             </BarChart>
           </ResponsiveContainer>
         </div>
 
-        {/* Average Response Time */}
+        {/* Top Locations */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-800 mb-4">Average Response Time (Hours)</h3>
-          <ResponsiveContainer width="100%" height={300}>
-            <LineChart data={responseTimeData}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="day" />
-              <YAxis />
-              <Tooltip />
-              <Line 
-                type="monotone" 
-                dataKey="avgTime" 
-                stroke="#3b82f6" 
-                strokeWidth={3}
-                dot={{ fill: '#3b82f6', strokeWidth: 2, r: 4 }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
+          <h3 className="text-lg font-semibold text-gray-800 mb-4">Top Report Locations</h3>
+          <div className="space-y-4">
+            {topLocations.length > 0 ? (
+              topLocations.map((location, index) => (
+                <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                  <div className="flex items-center space-x-3">
+                    <div className="bg-blue-100 p-2 rounded-lg">
+                      <MapPin className="h-4 w-4 text-blue-600" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-800">{location.location}</p>
+                      <p className="text-sm text-gray-500">{location.reports} reports</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="w-16 bg-gray-200 rounded-full h-2">
+                      <div
+                        className="bg-blue-500 h-2 rounded-full"
+                        style={{ width: `${(location.reports / Math.max(...topLocations.map(l => l.reports))) * 100}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="text-center py-8">
+                <MapPin className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-500">No location data available</p>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Detailed Statistics Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-        <div className="p-6 border-b border-gray-200">
-          <h3 className="text-lg font-semibold text-gray-800">Location-wise Detailed Statistics</h3>
+      {/* Summary Stats */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {/* Quick Stats */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center space-x-3 mb-4">
+            <div className="bg-purple-100 p-2 rounded-lg">
+              <Activity className="h-5 w-5 text-purple-600" />
+            </div>
+            <h3 className="text-lg font-semibold text-gray-800">Quick Stats</h3>
+          </div>
+          <div className="space-y-3">
+            <div className="flex justify-between items-center">
+              <span className="text-gray-600">Reports Today</span>
+              <span className="font-semibold text-gray-900">{reports.filter(r => r.date === new Date().toISOString().split('T')[0]).length}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-gray-600">Average Points/User</span>
+              <span className="font-semibold text-gray-900">{totalUsers > 0 ? Math.round(totalPoints / totalUsers) : 0}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-gray-600">Response Rate</span>
+              <span className="font-semibold text-green-600">{totalReports > 0 ? Math.round(((acceptedReports + rejectedReports) / totalReports) * 100) : 0}%</span>
+            </div>
+          </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Location
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Total Reports
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Severity Level
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Acceptance Rate
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Avg Response Time
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {locationData.map((location, index) => (
-                <tr key={index} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <MapPin className="h-4 w-4 text-gray-400 mr-2" />
-                      <span className="text-sm font-medium text-gray-900">{location.location}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {location.reports}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-                      location.severity === 'high' ? 'bg-red-100 text-red-800' :
-                      location.severity === 'medium' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-green-100 text-green-800'
-                    }`}>
-                      {location.severity.charAt(0).toUpperCase() + location.severity.slice(1)}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {Math.floor(Math.random() * 20 + 75)}%
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {(Math.random() * 2 + 1).toFixed(1)}h
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+
+        {/* Performance Metrics */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center space-x-3 mb-4">
+            <div className="bg-green-100 p-2 rounded-lg">
+              <Target className="h-5 w-5 text-green-600" />
+            </div>
+            <h3 className="text-lg font-semibold text-gray-800">Performance</h3>
+          </div>
+          <div className="space-y-3">
+            <div className="flex justify-between items-center">
+              <span className="text-gray-600">Quality Score</span>
+              <span className="font-semibold text-green-600">{acceptanceRate}%</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-gray-600">User Retention</span>
+              <span className="font-semibold text-blue-600">{userEngagement}%</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-gray-600">System Health</span>
+              <span className="font-semibold text-green-600">Excellent</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Recent Activity */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          <div className="flex items-center space-x-3 mb-4">
+            <div className="bg-orange-100 p-2 rounded-lg">
+              <Clock className="h-5 w-5 text-orange-600" />
+            </div>
+            <h3 className="text-lg font-semibold text-gray-800">Recent Activity</h3>
+          </div>
+          <div className="space-y-3">
+            {reports.slice(0, 3).map((report, index) => (
+              <div key={index} className="flex items-center space-x-3">
+                <div className={`w-2 h-2 rounded-full ${report.status === 'accepted' ? 'bg-green-500' :
+                    report.status === 'pending' ? 'bg-yellow-500' : 'bg-red-500'
+                  }`}></div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-800 truncate">{report.type}</p>
+                  <p className="text-xs text-gray-500">{report.date}</p>
+                </div>
+              </div>
+            ))}
+            {reports.length === 0 && (
+              <p className="text-sm text-gray-500 text-center py-4">No recent activity</p>
+            )}
+          </div>
         </div>
       </div>
+
     </div>
   );
 };

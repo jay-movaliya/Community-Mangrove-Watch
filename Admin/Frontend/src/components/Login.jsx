@@ -10,6 +10,7 @@ const Login = ({ onLogin }) => {
     const [showPassword, setShowPassword] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
+    const [success, setSuccess] = useState('');
 
     const handleInputChange = (e) => {
         const { name, value } = e.target;
@@ -17,8 +18,9 @@ const Login = ({ onLogin }) => {
             ...prev,
             [name]: value
         }));
-        // Clear error when user starts typing
+        // Clear error and success when user starts typing
         if (error) setError('');
+        if (success) setSuccess('');
     };
 
     const handleSubmit = async (e) => {
@@ -40,25 +42,45 @@ const Login = ({ onLogin }) => {
         }
 
         try {
+            console.log('🔐 Attempting login for:', formData.email);
+            
             // Call the real admin login API
             const result = await authAPI.adminLogin(formData.email, formData.password);
+            console.log('📡 Login API response:', result);
 
             if (result.success) {
-                // Login successful
-                onLogin({
+                console.log('✅ Login API successful!');
+                
+                // Login successful - prepare user data
+                const userData = {
                     email: formData.email,
                     name: result.data.name || result.data.admin_name || 'Admin User',
                     role: result.data.role || result.data.admin_role || 'Administrator',
                     id: result.data.id || result.data.admin_id,
+                    loginTime: new Date().toISOString(),
+                    lastActivity: new Date().toISOString(),
                     ...result.data
-                });
+                };
+                
+                console.log('👤 Prepared user data:', userData);
+                console.log('🎯 Calling onLogin callback to redirect to dashboard...');
+                
+                // This will trigger the redirect to dashboard
+                onLogin(userData);
             } else {
                 // Login failed
+                console.log('❌ Login failed:', result.message);
                 setError(result.message || 'Invalid email or password');
             }
         } catch (err) {
-            console.error('Login error:', err);
-            setError('Login failed. Please check your connection and try again.');
+            console.error('❌ Login error:', err);
+            if (err.name === 'TypeError' && err.message.includes('fetch')) {
+                setError('Network error. Please check your internet connection.');
+            } else if (err.message.includes('JSON')) {
+                setError('Server response error. Please try again.');
+            } else {
+                setError('Login failed. Please check your credentials and try again.');
+            }
         } finally {
             setIsLoading(false);
         }
