@@ -16,14 +16,23 @@ $email = isset($data['email']) ? trim($data['email']) : null;
 $password = isset($data['password']) ? trim($data['password']) : null;
 
 // Prepare and execute the SQL query
-$check_user=$conn->prepare("SELECT * FROM `admins` WHERE `email`=?");
+$check_user=$conn->prepare("SELECT * FROM `users` WHERE `email`=?");
 $check_user->bind_param("s", $email);
 $check_user->execute();
 $result=$check_user->get_result();
 if($result->num_rows>0){
   $user=$result->fetch_assoc();
   if($password==$user['password']){
-    sendResponse("success","Login successful",$user);
+    if($user['ac_status']==1){
+      if($user['status']==1){
+        sendResponse("success","Login successful");
+      }else{
+        sendResponse("error","Account suspended");
+      }
+    }else{
+      sendResponse("error","Account not verified");
+
+    }
   }else{
     sendResponse("error","Invalid credentials");
   }

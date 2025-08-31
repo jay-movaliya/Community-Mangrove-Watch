@@ -13,20 +13,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 // Parse and sanitize input
 $data = json_decode(file_get_contents("php://input"), true);
 $email = isset($data['email']) ? trim($data['email']) : null;
-$password = isset($data['password']) ? trim($data['password']) : null;
 
 // Prepare and execute the SQL query
-$check_user=$conn->prepare("SELECT * FROM `admins` WHERE `email`=?");
+$check_user=$conn->prepare("SELECT * FROM `users` WHERE `email`=?");
 $check_user->bind_param("s", $email);
 $check_user->execute();
 $result=$check_user->get_result();
 if($result->num_rows>0){
   $user=$result->fetch_assoc();
-  if($password==$user['password']){
-    sendResponse("success","Login successful",$user);
-  }else{
-    sendResponse("error","Invalid credentials");
-  }
+  $fetch_complaints=$conn->prepare("SELECT * FROM `complaints` WHERE `email`=?");
+  $fetch_complaints->bind_param("s", $email);
+  $fetch_complaints->execute();
+  $result=$fetch_complaints->get_result();
+  $num_rows=$result->num_rows;
+  $data=[
+    "user"=>$user,
+    "complaints"=>$num_rows
+  ];
+  sendResponse("success","User found",$data);
 }else{
   sendResponse("error","User not found");
 }
