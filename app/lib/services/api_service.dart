@@ -60,7 +60,7 @@ class ApiService {
         return {
           'success': false,
           'error':
-              'Registration failed. Status code: ${response.statusCode}\nResponse: ${response.body}',
+          'Registration failed. Status code: ${response.statusCode}\nResponse: ${response.body}',
         };
       }
     } catch (e) {
@@ -116,7 +116,7 @@ class ApiService {
         return {
           'success': false,
           'error':
-              'OTP verification failed. Status code: ${response.statusCode}\nResponse: ${response.body}',
+          'OTP verification failed. Status code: ${response.statusCode}\nResponse: ${response.body}',
         };
       }
     } catch (e) {
@@ -167,7 +167,7 @@ class ApiService {
         return {
           'success': false,
           'error':
-              'Failed to resend OTP. Status code: ${response.statusCode}\nResponse: ${response.body}',
+          'Failed to resend OTP. Status code: ${response.statusCode}\nResponse: ${response.body}',
         };
       }
     } catch (e) {
@@ -221,7 +221,7 @@ class ApiService {
         return {
           'success': false,
           'error':
-              'Login failed. Status code: ${response.statusCode}\nResponse: ${response.body}',
+          'Login failed. Status code: ${response.statusCode}\nResponse: ${response.body}',
         };
       }
     } catch (e) {
@@ -274,7 +274,7 @@ class ApiService {
         return {
           'success': false,
           'error':
-              'Failed to fetch profile. Status code: ${response.statusCode}\nResponse: ${response.body}',
+          'Failed to fetch profile. Status code: ${response.statusCode}\nResponse: ${response.body}',
         };
       }
     } catch (e) {
@@ -282,12 +282,11 @@ class ApiService {
       return {'success': false, 'error': 'Network error: $e'};
     }
   }
-
   static Future<Map<String, dynamic>> getUserReports({
     required String email,
   }) async {
     try {
-      final url = Uri.parse('$baseUrl/reports/user_reports.php');
+      final url = Uri.parse('$baseUrl/profile/fetch_complains.php');
 
       final body = {'email': email};
 
@@ -327,7 +326,7 @@ class ApiService {
         return {
           'success': false,
           'error':
-              'Failed to fetch reports. Status code: ${response.statusCode}\nResponse: ${response.body}',
+          'Failed to fetch reports. Status code: ${response.statusCode}\nResponse: ${response.body}',
         };
       }
     } catch (e) {
@@ -336,6 +335,388 @@ class ApiService {
     }
   }
 
+  static Future<Map<String, dynamic>> submitReport({
+    required String email,
+    required double latitude,
+    required double longitude,
+    required String imagePath,
+    required String type,
+    required String description,
+  }) async {
+    // Transaction state tracking
+    Map<String, dynamic> transactionState = {
+      'location_check': null,
+      'prediction': null,
+      'complaint': null,
+      'completed_steps': [],
+    };
+
+    try {
+      print('Starting report submission transaction...');
+      print('Email: $email, Lat: $latitude, Lng: $longitude, Type: $type');
+
+      // Step 1: Check location API - TRANSACTION START
+      print('Step 1: Checking location (Transaction Start)...');
+      final locationCheckResult = await _checkLocation(latitude, longitude);
+
+      if (!locationCheckResult['success']) {
+        print('Transaction failed at Step 1: Location check failed');
+        return {
+          'success': false,
+          'error': 'Location check failed: ${locationCheckResult['error']}',
+          'step': 1,
+          'transaction_state': transactionState,
+        };
+      }
+
+      final locationData = locationCheckResult['data'];
+      transactionState['location_check'] = locationData;
+      transactionState['completed_steps'].add('location_check');
+
+      // Check if location is within mangrove area
+      if (locationData['inside_mangrove'] != true) {
+        print(
+          'Transaction failed at Step 1: Location not within mangrove area',
+        );
+        return {
+          'success': false,
+          'error': 'Location is not within mangrove area',
+          'step': 1,
+          'transaction_state': transactionState,
+        };
+      }
+
+      print('✓ Location check passed - proceeding to image validation');
+
+      // Step 2: Predict with image API - AUTOMATIC TRANSACTION CONTINUATION
+      print('Step 2: Predicting with image (Automatic continuation)...');
+      final predictionResult = await _predictWithImage(imagePath);
+
+      if (!predictionResult['success']) {
+        print('Transaction failed at Step 2: Prediction failed');
+        return {
+          'success': false,
+          'error': 'Prediction failed: ${predictionResult['error']}',
+          'step': 2,
+          'transaction_state': transactionState,
+        };
+      }
+
+      final predictionData = predictionResult['data'];
+      transactionState['prediction'] = predictionData;
+      transactionState['completed_steps'].add('prediction');
+
+      // Debug logging for final_result
+      print('Prediction data: $predictionData');
+      print('Final result type: ${predictionData['final_result'].runtimeType}');
+      print('Final result value: ${predictionData['final_result']}');
+
+      // Check if AI validation passed - handle both integer and string values
+      final finalResult = predictionData['final_result'];
+      final isValidResult =
+          finalResult == 1 || finalResult == '1' || finalResult == true;
+
+      if (!isValidResult) {
+        print('Transaction failed at Step 2: AI validation failed');
+        print(
+          'Expected: 1, "1", or true, Got: $finalResult (${finalResult.runtimeType})',
+        );
+        return {
+          'success': false,
+          'error':
+          'AI validation failed: Image does not show environmental damage',
+          'step': 2,
+          'transaction_state': transactionState,
+        };
+      }
+
+      print('✓ Prediction passed - proceeding to complaint submission');
+
+      // Step 3: Submit complaint API - TRANSACTION FINALIZATION
+      print('Step 3: Submitting complaint (Transaction Finalization)...');
+      final complaintResult = await _submitComplaint(
+        email: email,
+        latitude: latitude,
+        longitude: longitude,
+        type: type,
+        description: description,
+        aiStatus: predictionData['final_result'].toString(),
+        imagePath: imagePath,
+      );
+
+      if (!complaintResult['success']) {
+        print('Transaction failed at Step 3: Complaint submission failed');
+        return {
+          'success': false,
+          'error': 'Complaint submission failed: ${complaintResult['error']}',
+          'step': 3,
+          'transaction_state': transactionState,
+        };
+      }
+
+      transactionState['complaint'] = complaintResult['data'];
+      transactionState['completed_steps'].add('complaint');
+
+      print('✓ Complaint submitted successfully - Transaction completed');
+
+      // TRANSACTION SUCCESS
+      return {
+        'success': true,
+        'data': {
+          'location_check': locationData,
+          'prediction': predictionData,
+          'complaint': complaintResult['data'],
+        },
+        'transaction_state': transactionState,
+        'message':
+        'Report submitted successfully - All validation steps completed',
+      };
+    } catch (e) {
+      print('Transaction error: $e');
+      return {
+        'success': false,
+        'error': 'Transaction failed: $e',
+        'transaction_state': transactionState,
+      };
+    }
+  }
+
+  // Enhanced location check with transaction support
+  static Future<Map<String, dynamic>> _checkLocation(
+      double latitude,
+      double longitude,
+      ) async {
+    try {
+      final url = Uri.parse(
+        'https://2b41fc7defb5.ngrok-free.app/check',
+      ).replace(
+        queryParameters: {
+          'lat': latitude.toString(),
+          'lon': longitude.toString(),
+          'buffer': '11',
+        },
+      );
+
+      print('Checking location at: $url');
+
+      final response = await http.get(url);
+
+      print('Location check response status: ${response.statusCode}');
+      print('Location check response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        try {
+          final responseData = jsonDecode(response.body);
+
+          // Enhanced response with transaction metadata
+          return {
+            'success': true,
+            'data': {
+              ...responseData,
+              'transaction_timestamp': DateTime.now().toIso8601String(),
+              'location_coordinates': {'lat': latitude, 'lng': longitude},
+            },
+          };
+        } catch (e) {
+          return {
+            'success': false,
+            'error': 'Invalid response format: ${response.body}',
+          };
+        }
+      } else {
+        return {
+          'success': false,
+          'error': 'Location check failed. Status code: ${response.statusCode}',
+        };
+      }
+    } catch (e) {
+      print('Location check error: $e');
+      return {'success': false, 'error': 'Network error: $e'};
+    }
+  }
+
+  // Enhanced image prediction with transaction support
+  static Future<Map<String, dynamic>> _predictWithImage(
+      String imagePath,
+      ) async {
+    try {
+      final url = Uri.parse('https://10ee96ed05cd.ngrok-free.app/predict');
+
+      print('Predicting with image at: $url');
+      print('Image path: $imagePath');
+
+      // Create multipart request
+      var request = http.MultipartRequest('POST', url);
+
+      // Add image file
+      var imageFile = File(imagePath);
+      if (!await imageFile.exists()) {
+        return {
+          'success': false,
+          'error': 'Image file not found at path: $imagePath',
+        };
+      }
+
+      var multipartFile = await http.MultipartFile.fromPath('image', imagePath);
+      request.files.add(multipartFile);
+
+      print('Sending prediction request with image...');
+
+      // Send request
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
+
+      print('Prediction response status: ${response.statusCode}');
+      print('Prediction response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        try {
+          final responseData = jsonDecode(response.body);
+
+          // Enhanced response with transaction metadata
+          return {
+            'success': true,
+            'data': {
+              ...responseData,
+              'transaction_timestamp': DateTime.now().toIso8601String(),
+              'image_path': imagePath,
+            },
+          };
+        } catch (e) {
+          return {
+            'success': false,
+            'error': 'Invalid response format: ${response.body}',
+          };
+        }
+      } else {
+        return {
+          'success': false,
+          'error': 'Prediction failed. Status code: ${response.statusCode}',
+        };
+      }
+    } catch (e) {
+      print('Prediction error: $e');
+      return {'success': false, 'error': 'Network error: $e'};
+    }
+  }
+
+  // Enhanced complaint submission with transaction support
+  static Future<Map<String, dynamic>> _submitComplaint({
+    required String email,
+    required double latitude,
+    required double longitude,
+    required String type,
+    required String description,
+    required String aiStatus,
+    required String imagePath,
+  }) async {
+    try {
+      final url = Uri.parse(
+        'https://manishkumardev.me/mangrove/complaints/insert.php',
+      );
+
+      print('Submitting complaint to: $url');
+
+      // Create multipart request
+      var request = http.MultipartRequest('POST', url);
+
+      // Add form fields
+      request.fields['email'] = email;
+      request.fields['latitude'] = latitude.toString();
+      request.fields['longitude'] = longitude.toString();
+      request.fields['type'] = type;
+      request.fields['dis'] = description;
+      request.fields['ai_status'] = aiStatus;
+
+      // Add image file - try multiple approaches
+      var imageFile = File(imagePath);
+      if (await imageFile.exists()) {
+        print('Image file exists at: $imagePath');
+        print('Image file size: ${await imageFile.length()} bytes');
+
+        // Approach 1: Send as multipart file
+        var multipartFile = await http.MultipartFile.fromPath(
+          'photo',
+          imagePath,
+        );
+        request.files.add(multipartFile);
+
+        // Approach 2: Also send as base64 encoded data in a field
+        try {
+          List<int> imageBytes = await imageFile.readAsBytes();
+          String base64Image = base64Encode(imageBytes);
+          request.fields['image_data'] = base64Image;
+          print('Added base64 image data to fields');
+        } catch (e) {
+          print('Failed to encode image as base64: $e');
+        }
+
+        print('Added image file to complaint submission');
+        print('Number of files in request: ${request.files.length}');
+      } else {
+        print('Warning: Image file not found at path: $imagePath');
+      }
+
+      print('Sending complaint data: ${request.fields}');
+      print(
+        'Request files: ${request.files.map((f) => '${f.field}: ${f.filename}').toList()}',
+      );
+
+      // Send request
+      var streamedResponse = await request.send();
+      var response = await http.Response.fromStream(streamedResponse);
+
+      print('Complaint response status: ${response.statusCode}');
+      print('Complaint response body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        try {
+          final responseData = jsonDecode(response.body);
+
+          // Check if the API response indicates success or error
+          if (responseData['status'] == 'success') {
+            // Enhanced response with transaction metadata
+            return {
+              'success': true,
+              'data': {
+                ...responseData,
+                'transaction_timestamp': DateTime.now().toIso8601String(),
+                'submission_data': {
+                  'email': email,
+                  'latitude': latitude,
+                  'longitude': longitude,
+                  'type': type,
+                  'description': description,
+                  'ai_status': aiStatus,
+                },
+              },
+            };
+          } else {
+            return {
+              'success': false,
+              'error': responseData['message'] ?? 'Complaint submission failed',
+            };
+          }
+        } catch (e) {
+          return {
+            'success': false,
+            'error': 'Invalid response format: ${response.body}',
+          };
+        }
+      } else {
+        return {
+          'success': false,
+          'error':
+          'Complaint submission failed. Status code: ${response.statusCode}',
+        };
+      }
+    } catch (e) {
+      print('Complaint submission error: $e');
+      return {'success': false, 'error': 'Network error: $e'};
+    }
+  }
+
+  // Keep the old predictIncident method for backward compatibility
   static Future<Map<String, dynamic>> predictIncident({
     required double latitude,
     required double longitude,
@@ -350,11 +731,11 @@ class ApiService {
 
       // Create multipart request
       var request = http.MultipartRequest('POST', url);
-      
+
       // Add latitude and longitude as fields
       request.fields['lat'] = latitude.toString();
       request.fields['lon'] = longitude.toString();
-      
+
       // Add image file
       var imageFile = File(imagePath);
       if (!await imageFile.exists()) {
@@ -364,10 +745,7 @@ class ApiService {
         };
       }
 
-      var multipartFile = await http.MultipartFile.fromPath(
-        'image',
-        imagePath,
-      );
+      var multipartFile = await http.MultipartFile.fromPath('image', imagePath);
       request.files.add(multipartFile);
 
       print('Sending multipart request with image and coordinates...');
@@ -393,7 +771,7 @@ class ApiService {
         return {
           'success': false,
           'error':
-              'Prediction failed. Status code: ${response.statusCode}\nResponse: ${response.body}',
+          'Prediction failed. Status code: ${response.statusCode}\nResponse: ${response.body}',
         };
       }
     } catch (e) {

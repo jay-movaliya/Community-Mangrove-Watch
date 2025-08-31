@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'dart:developer' as developer;
 import '../services/api_service.dart';
+import '../services/auth_service.dart';
 import 'camera_screen.dart';
 
 class ReportIncidentScreen extends StatefulWidget {
@@ -33,10 +34,7 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
   bool _isLoadingLocation = false;
   final ImagePicker _picker = ImagePicker();
 
-  final List<String> _incidentTypes = [
-    'Illegal Dumping',
-    'Wood Cutting'
-  ];
+  final List<String> _incidentTypes = ['Illegal Dumping', 'Wood Cutting'];
 
   @override
   void initState() {
@@ -102,7 +100,7 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
         _locationFetched = true;
         _isLoadingLocation = false;
         _locationAddress =
-            'Lat: ${_latitude!.toStringAsFixed(6)}, Lng: ${_longitude!.toStringAsFixed(6)}';
+        'Lat: ${_latitude!.toStringAsFixed(6)}, Lng: ${_longitude!.toStringAsFixed(6)}';
       });
 
       developer.log('Location fetched successfully: $_latitude, $_longitude');
@@ -275,15 +273,15 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
 
         if (e.toString().toLowerCase().contains('permission')) {
           errorMessage =
-              'Gallery access permission needed. Please allow photo access in settings.';
+          'Gallery access permission needed. Please allow photo access in settings.';
           showSettingsButton = true;
         } else if (e.toString().toLowerCase().contains('denied')) {
           errorMessage =
-              'Gallery access was denied. Please enable photo permissions in app settings.';
+          'Gallery access was denied. Please enable photo permissions in app settings.';
           showSettingsButton = true;
         } else {
           errorMessage =
-              'Unable to access gallery. Please try again or use camera instead.';
+          'Unable to access gallery. Please try again or use camera instead.';
         }
 
         ScaffoldMessenger.of(context).showSnackBar(
@@ -295,21 +293,21 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
             backgroundColor: Colors.red,
             duration: const Duration(seconds: 4),
             action:
-                showSettingsButton
-                    ? SnackBarAction(
-                      label: 'Settings',
-                      textColor: Colors.white,
-                      onPressed: () async {
-                        await openAppSettings();
-                      },
-                    )
-                    : SnackBarAction(
-                      label: 'Camera',
-                      textColor: Colors.white,
-                      onPressed: () {
-                        _takePhoto();
-                      },
-                    ),
+            showSettingsButton
+                ? SnackBarAction(
+              label: 'Settings',
+              textColor: Colors.white,
+              onPressed: () async {
+                await openAppSettings();
+              },
+            )
+                : SnackBarAction(
+              label: 'Camera',
+              textColor: Colors.white,
+              onPressed: () {
+                _takePhoto();
+              },
+            ),
           ),
         );
       }
@@ -469,6 +467,24 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
     });
 
     try {
+      // Get user email
+      final userEmail = await AuthService.getUserEmail();
+      if (userEmail == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'User not logged in. Please login again.',
+              style: GoogleFonts.poppins(),
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+        setState(() {
+          _isSubmitting = false;
+        });
+        return;
+      }
+
       // Prepare report data
       double? reportLat;
       double? reportLng;
@@ -486,12 +502,12 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
         reportLng = _longitude;
       }
 
-      // Check if we have coordinates for prediction
+      // Check if we have coordinates
       if (reportLat == null || reportLng == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Coordinates are required for prediction. Please provide latitude and longitude.',
+              'Coordinates are required. Please provide latitude and longitude.',
               style: GoogleFonts.poppins(),
             ),
             backgroundColor: Colors.red,
@@ -503,13 +519,18 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
         return;
       }
 
-      developer.log('Calling prediction API with lat: $reportLat, lng: $reportLng, image: $_capturedImagePath');
+      developer.log(
+        'Submitting report with lat: $reportLat, lng: $reportLng, image: $_capturedImagePath',
+      );
 
-      // Call prediction API
-      final predictionResult = await ApiService.predictIncident(
+      // Call the new submitReport API
+      final reportResult = await ApiService.submitReport(
+        email: userEmail,
         latitude: reportLat,
         longitude: reportLng,
         imagePath: _capturedImagePath!,
+        type: _selectedIncidentType,
+        description: _descriptionController.text.trim(),
       );
 
       if (!mounted) return;
@@ -518,19 +539,35 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
         _isSubmitting = false;
       });
 
-      if (predictionResult['success']) {
-        // Show prediction results
-        final predictionData = predictionResult['data'];
-        _showPredictionResults(predictionData, reportLat, reportLng);
+      if (reportResult['success']) {
+        // Show success results
+        final reportData = reportResult['data'];
+        final transactionState = reportResult['transaction_state'];
+        _showReportResults(reportData, reportLat, reportLng, transactionState);
       } else {
-        // Show error
+        // Show error with step information
+        String errorMessage = reportResult['error'];
+        int? step = reportResult['step'];
+
+        if (step != null) {
+          switch (step) {
+            case 1:
+              errorMessage = 'Location Check Failed: $errorMessage';
+              break;
+            case 2:
+              errorMessage = 'AI Validation Failed: $errorMessage';
+              break;
+            case 3:
+              errorMessage = 'Complaint Submission Failed: $errorMessage';
+              break;
+          }
+        }
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              'Prediction failed: ${predictionResult['error']}',
-              style: GoogleFonts.poppins(),
-            ),
+            content: Text(errorMessage, style: GoogleFonts.poppins()),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
           ),
         );
       }
@@ -553,21 +590,26 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
     }
   }
 
-  void _showPredictionResults(Map<String, dynamic> predictionData, double lat, double lng) {
+  void _showTransactionError(
+      String errorMessage,
+      int? step,
+      Map<String, dynamic>? transactionState,
+      ) {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
+      builder:
+          (context) => AlertDialog(
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
         ),
         title: Row(
           children: [
-            const Icon(Icons.analytics, color: Color(0xFF4CAF50)),
+            const Icon(Icons.error, color: Colors.red),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                'Prediction Results',
+                'Transaction Failed',
                 style: GoogleFonts.poppins(fontWeight: FontWeight.bold),
               ),
             ),
@@ -578,11 +620,241 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Location info
+              // Error message
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.grey.withValues(alpha: 0.1),
+                  color: Colors.red.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  errorMessage,
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.red[800],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Transaction progress
+              if (transactionState != null) ...[
+                Text(
+                  'Transaction Progress:',
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: const Color(0xFF2E7D32),
+                  ),
+                ),
+                const SizedBox(height: 8),
+
+                // Location check status
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color:
+                    transactionState['location_check'] != null
+                        ? const Color(0xFF4CAF50).withValues(alpha: 0.1)
+                        : Colors.grey.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color:
+                      transactionState['location_check'] != null
+                          ? const Color(0xFF4CAF50)
+                          : Colors.grey,
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        transactionState['location_check'] != null
+                            ? Icons.check_circle
+                            : Icons.radio_button_unchecked,
+                        color:
+                        transactionState['location_check'] != null
+                            ? const Color(0xFF4CAF50)
+                            : Colors.grey,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Location Check',
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color:
+                            transactionState['location_check'] != null
+                                ? const Color(0xFF2E7D32)
+                                : Colors.grey[600],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+
+                // Prediction status
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color:
+                    transactionState['prediction'] != null
+                        ? const Color(0xFF4CAF50).withValues(alpha: 0.1)
+                        : Colors.grey.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color:
+                      transactionState['prediction'] != null
+                          ? const Color(0xFF4CAF50)
+                          : Colors.grey,
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        transactionState['prediction'] != null
+                            ? Icons.check_circle
+                            : Icons.radio_button_unchecked,
+                        color:
+                        transactionState['prediction'] != null
+                            ? const Color(0xFF4CAF50)
+                            : Colors.grey,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'AI Validation',
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color:
+                            transactionState['prediction'] != null
+                                ? const Color(0xFF2E7D32)
+                                : Colors.grey[600],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 8),
+
+                // Complaint status
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color:
+                    transactionState['complaint'] != null
+                        ? const Color(0xFF4CAF50).withValues(alpha: 0.1)
+                        : Colors.grey.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color:
+                      transactionState['complaint'] != null
+                          ? const Color(0xFF4CAF50)
+                          : Colors.grey,
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        transactionState['complaint'] != null
+                            ? Icons.check_circle
+                            : Icons.radio_button_unchecked,
+                        color:
+                        transactionState['complaint'] != null
+                            ? const Color(0xFF4CAF50)
+                            : Colors.grey,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Complaint Submission',
+                          style: GoogleFonts.poppins(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color:
+                            transactionState['complaint'] != null
+                                ? const Color(0xFF2E7D32)
+                                : Colors.grey[600],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop(); // Close dialog
+            },
+            child: Text(
+              'OK',
+              style: GoogleFonts.poppins(
+                color: Colors.red,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showReportResults(
+      Map<String, dynamic> reportData,
+      double lat,
+      double lng,
+      Map<String, dynamic>? transactionState,
+      ) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder:
+          (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: Row(
+          children: [
+            const Icon(Icons.check_circle, color: Color(0xFF4CAF50)),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Transaction Completed Successfully',
+                style: GoogleFonts.poppins(fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Transaction summary
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF4CAF50).withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Column(
@@ -590,20 +862,29 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
                   children: [
                     Text(
                       'Location: ${lat.toStringAsFixed(6)}, ${lng.toStringAsFixed(6)}',
-                      style: GoogleFonts.poppins(fontSize: 12, fontWeight: FontWeight.w600),
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     Text(
                       'Time: ${DateTime.now().toString().split('.')[0]}',
                       style: GoogleFonts.poppins(fontSize: 12),
                     ),
+                    if (transactionState != null) ...[
+                      Text(
+                        'Steps Completed: ${transactionState['completed_steps']?.length ?? 0}/3',
+                        style: GoogleFonts.poppins(fontSize: 12),
+                      ),
+                    ],
                   ],
                 ),
               ),
               const SizedBox(height: 16),
-              
-              // Prediction results
+
+              // Step results
               Text(
-                'AI Analysis Results:',
+                'Transaction Steps:',
                 style: GoogleFonts.poppins(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
@@ -611,57 +892,133 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-              
+
+              // Location check result
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
                   color: const Color(0xFF4CAF50).withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: const Color(0xFF4CAF50), width: 1),
+                  border: Border.all(
+                    color: const Color(0xFF4CAF50),
+                    width: 1,
+                  ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Display prediction results based on API response structure
-                    if (predictionData.containsKey('prediction'))
+                    Text(
+                      '✓ Location Check: Passed',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF2E7D32),
+                      ),
+                    ),
+                    Text(
+                      'Location is within mangrove area',
+                      style: GoogleFonts.poppins(fontSize: 12),
+                    ),
+                    if (transactionState?['location_check']?['transaction_timestamp'] !=
+                        null)
                       Text(
-                        'Prediction: ${predictionData['prediction']}',
+                        'Timestamp: ${transactionState!['location_check']['transaction_timestamp']}',
                         style: GoogleFonts.poppins(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
+                          fontSize: 10,
+                          color: Colors.grey[600],
                         ),
-                      ),
-                    if (predictionData.containsKey('confidence'))
-                      Text(
-                        'Confidence: ${(predictionData['confidence'] * 100).toStringAsFixed(1)}%',
-                        style: GoogleFonts.poppins(fontSize: 12),
-                      ),
-                    if (predictionData.containsKey('class'))
-                      Text(
-                        'Detected Class: ${predictionData['class']}',
-                        style: GoogleFonts.poppins(fontSize: 12),
-                      ),
-                    if (predictionData.containsKey('message'))
-                      Text(
-                        'Message: ${predictionData['message']}',
-                        style: GoogleFonts.poppins(fontSize: 12),
-                      ),
-                    
-                    // If no specific fields, show raw data
-                    if (!predictionData.containsKey('prediction') && 
-                        !predictionData.containsKey('class') &&
-                        !predictionData.containsKey('message'))
-                      Text(
-                        predictionData.toString(),
-                        style: GoogleFonts.poppins(fontSize: 12),
                       ),
                   ],
                 ),
               ),
-              
+
+              const SizedBox(height: 8),
+
+              // AI prediction result
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF4CAF50).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: const Color(0xFF4CAF50),
+                    width: 1,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '✓ AI Validation: Passed',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF2E7D32),
+                      ),
+                    ),
+                    Text(
+                      'Image shows environmental damage',
+                      style: GoogleFonts.poppins(fontSize: 12),
+                    ),
+                    if (transactionState?['prediction']?['transaction_timestamp'] !=
+                        null)
+                      Text(
+                        'Timestamp: ${transactionState!['prediction']['transaction_timestamp']}',
+                        style: GoogleFonts.poppins(
+                          fontSize: 10,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 8),
+
+              // Complaint submission result
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF4CAF50).withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: const Color(0xFF4CAF50),
+                    width: 1,
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '✓ Complaint Submitted: Success',
+                      style: GoogleFonts.poppins(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF2E7D32),
+                      ),
+                    ),
+                    Text(
+                      'Your report has been recorded',
+                      style: GoogleFonts.poppins(fontSize: 12),
+                    ),
+                    if (transactionState?['complaint']?['transaction_timestamp'] !=
+                        null)
+                      Text(
+                        'Timestamp: ${transactionState!['complaint']['transaction_timestamp']}',
+                        style: GoogleFonts.poppins(
+                          fontSize: 10,
+                          color: Colors.grey[600],
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+
               const SizedBox(height: 16),
-              
+
               // Success message
               Container(
                 padding: const EdgeInsets.all(12),
@@ -671,11 +1028,14 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.check_circle, color: Color(0xFF4CAF50)),
+                    const Icon(
+                      Icons.check_circle,
+                      color: Color(0xFF4CAF50),
+                    ),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Report analyzed and submitted successfully!',
+                        'All transaction steps completed successfully!',
                         style: GoogleFonts.poppins(
                           fontWeight: FontWeight.w600,
                           color: const Color(0xFF2E7D32),
@@ -754,15 +1114,15 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
                       ),
                       decoration: BoxDecoration(
                         color:
-                            !_useCustomLocation
-                                ? const Color(0xFF4CAF50).withValues(alpha: 0.1)
-                                : Colors.grey.withValues(alpha: 0.1),
+                        !_useCustomLocation
+                            ? const Color(0xFF4CAF50).withValues(alpha: 0.1)
+                            : Colors.grey.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
                           color:
-                              !_useCustomLocation
-                                  ? const Color(0xFF4CAF50)
-                                  : Colors.grey,
+                          !_useCustomLocation
+                              ? const Color(0xFF4CAF50)
+                              : Colors.grey,
                           width: 1,
                         ),
                       ),
@@ -773,9 +1133,9 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
                           Icon(
                             Icons.gps_fixed,
                             color:
-                                !_useCustomLocation
-                                    ? const Color(0xFF4CAF50)
-                                    : Colors.grey,
+                            !_useCustomLocation
+                                ? const Color(0xFF4CAF50)
+                                : Colors.grey,
                             size: 16,
                           ),
                           const SizedBox(width: 4),
@@ -786,9 +1146,9 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
                                 color:
-                                    !_useCustomLocation
-                                        ? const Color(0xFF2E7D32)
-                                        : Colors.grey[600],
+                                !_useCustomLocation
+                                    ? const Color(0xFF2E7D32)
+                                    : Colors.grey[600],
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -813,15 +1173,15 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
                       ),
                       decoration: BoxDecoration(
                         color:
-                            _useCustomLocation
-                                ? const Color(0xFF4CAF50).withValues(alpha: 0.1)
-                                : Colors.grey.withValues(alpha: 0.1),
+                        _useCustomLocation
+                            ? const Color(0xFF4CAF50).withValues(alpha: 0.1)
+                            : Colors.grey.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
                           color:
-                              _useCustomLocation
-                                  ? const Color(0xFF4CAF50)
-                                  : Colors.grey,
+                          _useCustomLocation
+                              ? const Color(0xFF4CAF50)
+                              : Colors.grey,
                           width: 1,
                         ),
                       ),
@@ -832,9 +1192,9 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
                           Icon(
                             Icons.edit_location,
                             color:
-                                _useCustomLocation
-                                    ? const Color(0xFF4CAF50)
-                                    : Colors.grey,
+                            _useCustomLocation
+                                ? const Color(0xFF4CAF50)
+                                : Colors.grey,
                             size: 16,
                           ),
                           const SizedBox(width: 4),
@@ -845,9 +1205,9 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
                                 color:
-                                    _useCustomLocation
-                                        ? const Color(0xFF2E7D32)
-                                        : Colors.grey[600],
+                                _useCustomLocation
+                                    ? const Color(0xFF2E7D32)
+                                    : Colors.grey[600],
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -869,19 +1229,19 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color:
-                      _locationFetched
-                          ? const Color(0xFF4CAF50).withValues(alpha: 0.1)
-                          : _isLoadingLocation
-                          ? Colors.orange.withValues(alpha: 0.1)
-                          : Colors.red.withValues(alpha: 0.1),
+                  _locationFetched
+                      ? const Color(0xFF4CAF50).withValues(alpha: 0.1)
+                      : _isLoadingLocation
+                      ? Colors.orange.withValues(alpha: 0.1)
+                      : Colors.red.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
                     color:
-                        _locationFetched
-                            ? const Color(0xFF4CAF50)
-                            : _isLoadingLocation
-                            ? Colors.orange
-                            : Colors.red,
+                    _locationFetched
+                        ? const Color(0xFF4CAF50)
+                        : _isLoadingLocation
+                        ? Colors.orange
+                        : Colors.red,
                     width: 1,
                   ),
                 ),
@@ -889,24 +1249,24 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
                   children: [
                     _isLoadingLocation
                         ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            valueColor: AlwaysStoppedAnimation<Color>(
-                              Colors.orange,
-                            ),
-                          ),
-                        )
-                        : Icon(
-                          _locationFetched
-                              ? Icons.location_on
-                              : Icons.location_off,
-                          color:
-                              _locationFetched
-                                  ? const Color(0xFF4CAF50)
-                                  : Colors.red,
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Colors.orange,
                         ),
+                      ),
+                    )
+                        : Icon(
+                      _locationFetched
+                          ? Icons.location_on
+                          : Icons.location_off,
+                      color:
+                      _locationFetched
+                          ? const Color(0xFF4CAF50)
+                          : Colors.red,
+                    ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -921,11 +1281,11 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
                             style: GoogleFonts.poppins(
                               fontWeight: FontWeight.w600,
                               color:
-                                  _isLoadingLocation
-                                      ? Colors.orange[800]
-                                      : _locationFetched
-                                      ? const Color(0xFF2E7D32)
-                                      : Colors.red[800],
+                              _isLoadingLocation
+                                  ? Colors.orange[800]
+                                  : _locationFetched
+                                  ? const Color(0xFF2E7D32)
+                                  : Colors.red[800],
                             ),
                           ),
                           Text(
@@ -957,7 +1317,7 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
                     style: GoogleFonts.poppins(),
                     decoration: InputDecoration(
                       hintText:
-                          'Enter location description (e.g., "Near Mangrove Park, City")',
+                      'Enter location description (e.g., "Near Mangrove Park, City")',
                       hintStyle: GoogleFonts.poppins(color: Colors.grey[500]),
                       prefixIcon: const Icon(
                         Icons.place,
@@ -1079,12 +1439,12 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
                   isExpanded: true,
                   style: GoogleFonts.poppins(color: const Color(0xFF2E7D32)),
                   items:
-                      _incidentTypes.map((String type) {
-                        return DropdownMenuItem<String>(
-                          value: type,
-                          child: Text(type),
-                        );
-                      }).toList(),
+                  _incidentTypes.map((String type) {
+                    return DropdownMenuItem<String>(
+                      value: type,
+                      child: Text(type),
+                    );
+                  }).toList(),
                   onChanged: (String? newValue) {
                     setState(() {
                       _selectedIncidentType = newValue!;
@@ -1114,95 +1474,95 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
                 width: double.infinity,
                 decoration: BoxDecoration(
                   color:
-                      _hasPhoto
-                          ? const Color(0xFF4CAF50).withValues(alpha: 0.1)
-                          : Colors.grey[100],
+                  _hasPhoto
+                      ? const Color(0xFF4CAF50).withValues(alpha: 0.1)
+                      : Colors.grey[100],
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
                     color:
-                        _hasPhoto ? const Color(0xFF4CAF50) : Colors.grey[300]!,
+                    _hasPhoto ? const Color(0xFF4CAF50) : Colors.grey[300]!,
                     width: 2,
                     style: BorderStyle.solid,
                   ),
                 ),
                 child:
-                    _hasPhoto && _capturedImagePath != null
-                        ? Stack(
-                          children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
-                              child: Image.file(
-                                File(_capturedImagePath!),
-                                width: double.infinity,
-                                height: double.infinity,
-                                fit: BoxFit.cover,
-                              ),
-                            ),
-                            Positioned(
-                              top: 8,
-                              right: 8,
-                              child: Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: Colors.black.withValues(alpha: 0.7),
-                                  borderRadius: BorderRadius.circular(20),
-                                ),
-                                child: const Icon(
-                                  Icons.check_circle,
-                                  color: Color(0xFF4CAF50),
-                                  size: 20,
-                                ),
-                              ),
-                            ),
-                            Positioned(
-                              bottom: 8,
-                              left: 8,
-                              right: 8,
-                              child: Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: BoxDecoration(
-                                  color: Colors.black.withValues(alpha: 0.7),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(
-                                  'Tap to change photo',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 12,
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                  textAlign: TextAlign.center,
-                                ),
-                              ),
-                            ),
-                          ],
-                        )
-                        : Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(
-                              Icons.add_a_photo,
-                              size: 50,
-                              color: Colors.grey,
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Tap to Add Photo',
-                              style: GoogleFonts.poppins(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.grey[700],
-                              ),
-                            ),
-                            Text(
-                              'Camera or Gallery • Required for validation',
-                              style: GoogleFonts.poppins(
-                                fontSize: 12,
-                                color: Colors.grey[600],
-                              ),
-                            ),
-                          ],
+                _hasPhoto && _capturedImagePath != null
+                    ? Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.file(
+                        File(_capturedImagePath!),
+                        width: double.infinity,
+                        height: double.infinity,
+                        fit: BoxFit.cover,
+                      ),
+                    ),
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.7),
+                          borderRadius: BorderRadius.circular(20),
                         ),
+                        child: const Icon(
+                          Icons.check_circle,
+                          color: Color(0xFF4CAF50),
+                          size: 20,
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      bottom: 8,
+                      left: 8,
+                      right: 8,
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.7),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          'Tap to change photo',
+                          style: GoogleFonts.poppins(
+                            fontSize: 12,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                  ],
+                )
+                    : Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.add_a_photo,
+                      size: 50,
+                      color: Colors.grey,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Tap to Add Photo',
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey[700],
+                      ),
+                    ),
+                    Text(
+                      'Camera or Gallery • Required for validation',
+                      style: GoogleFonts.poppins(
+                        fontSize: 12,
+                        color: Colors.grey[600],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
 
@@ -1259,37 +1619,37 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
                   elevation: 2,
                 ),
                 child:
-                    _isSubmitting
-                        ? Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  Colors.white,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Text(
-                              'Analyzing Image...',
-                              style: GoogleFonts.poppins(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        )
-                        : Text(
-                          'Analyze & Submit',
-                          style: GoogleFonts.poppins(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
+                _isSubmitting
+                    ? Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Colors.white,
                         ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      'Processing Report...',
+                      style: GoogleFonts.poppins(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                )
+                    : Text(
+                  'Submit Report',
+                  style: GoogleFonts.poppins(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
             ),
 
@@ -1309,7 +1669,7 @@ class _ReportIncidentScreenState extends State<ReportIncidentScreen> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'Your report will be validated using AI to check if the photo shows actual environmental damage and is taken within a mangrove area.',
+                      'Your report will go through 3 validation steps: 1) Location check within mangrove area, 2) AI validation of environmental damage, 3) Complaint submission.',
                       style: GoogleFonts.poppins(
                         fontSize: 12,
                         color: Colors.blue[800],

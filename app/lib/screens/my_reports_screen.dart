@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../services/api_service.dart';
+import '../services/auth_service.dart';
 
 class MyReportsScreen extends StatefulWidget {
   const MyReportsScreen({super.key});
@@ -9,79 +11,112 @@ class MyReportsScreen extends StatefulWidget {
 }
 
 class _MyReportsScreenState extends State<MyReportsScreen> {
-  final List<Map<String, dynamic>> _reports = [
-    {
-      'id': 'RPT001',
-      'type': 'Illegal Dumping',
-      'location': 'Mangrove Area - Sector 5',
-      'status': 'Pending',
-      'date': '2024-01-15',
-      'points': 0,
-      'description': 'Large amount of plastic waste dumped near the water edge',
-      'statusColor': Colors.orange,
-      'icon': Icons.report_problem,
-    },
-    {
-      'id': 'RPT002',
-      'type': 'Tree Cutting',
-      'location': 'Mangrove Area - Sector 2',
-      'status': 'Accepted',
-      'date': '2024-01-14',
-      'points': 50,
-      'description': 'Several mangrove trees cut down for construction',
-      'statusColor': const Color(0xFF4CAF50),
-      'icon': Icons.content_cut,
-    },
-    {
-      'id': 'RPT003',
-      'type': 'Waste Disposal',
-      'location': 'Mangrove Area - Sector 8',
-      'status': 'Under Investigation',
-      'date': '2024-01-12',
-      'points': 0,
-      'description': 'Chemical waste containers found in the area',
-      'statusColor': Colors.blue,
-      'icon': Icons.delete,
-    },
-    {
-      'id': 'RPT004',
-      'type': 'Construction Activity',
-      'location': 'Mangrove Area - Sector 3',
-      'status': 'Rejected',
-      'date': '2024-01-10',
-      'points': 0,
-      'description': 'Unauthorized construction near protected area',
-      'statusColor': Colors.red,
-      'icon': Icons.construction,
-    },
-    {
-      'id': 'RPT005',
-      'type': 'Illegal Dumping',
-      'location': 'Mangrove Area - Sector 7',
-      'status': 'Accepted',
-      'date': '2024-01-08',
-      'points': 50,
-      'description': 'Household waste dumped in conservation area',
-      'statusColor': const Color(0xFF4CAF50),
-      'icon': Icons.report_problem,
-    },
-  ];
-
+  List<Map<String, dynamic>> _reports = [];
+  bool _isLoading = true;
+  String _errorMessage = '';
   String _selectedFilter = 'All';
+
   final List<String> _filterOptions = [
     'All',
-    'Pending',
-    'Accepted',
-    'Under Investigation',
-    'Rejected',
+    'pending',
+    'accepted',
+    'rejected',
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadReports();
+  }
+
+  Future<void> _loadReports() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = '';
+    });
+
+    try {
+      final userEmail = await AuthService.getUserEmail();
+      if (userEmail == null) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = 'User not logged in';
+        });
+        return;
+      }
+
+      final result = await ApiService.getUserReports(email: userEmail);
+
+      if (result['success']) {
+        final responseData = result['data'];
+        final reportsData = responseData['data'] as List<dynamic>;
+
+        final reports = reportsData.map((report) {
+          return {
+            'id': report['id'].toString(),
+            'type': report['type'] ?? 'Unknown',
+            'location': '${report['location']['lat']}, ${report['location']['lng']}',
+            'status': report['status'] ?? 'pending',
+            'date': report['date'] ?? '',
+            'points': 00,
+            'description': report['discription'] ?? '',
+            'statusColor': _getStatusColor(report['status']),
+            'icon': _getTypeIcon(report['type']),
+            'image': report['image'] ?? '',
+            'ai_status': report['ai_status'] ?? 0,
+          };
+        }).toList();
+
+        setState(() {
+          _reports = reports;
+          _isLoading = false;
+        });
+      } else {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = result['error'] ?? 'Failed to load reports';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+        _errorMessage = 'Error loading reports: $e';
+      });
+    }
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'accepted':
+        return const Color(0xFF4CAF50);
+      case 'pending':
+        return Colors.orange;
+      case 'rejected':
+        return Colors.red;
+      default:
+        return Colors.grey;
+    }
+  }
+
+  IconData _getTypeIcon(String type) {
+    switch (type.toLowerCase()) {
+      case 'wood cutting':
+        return Icons.content_cut;
+      case 'dumping':
+        return Icons.delete;
+      case 'illegal dumping':
+        return Icons.report_problem;
+      default:
+        return Icons.report;
+    }
+  }
 
   List<Map<String, dynamic>> get _filteredReports {
     if (_selectedFilter == 'All') {
       return _reports;
     }
     return _reports
-        .where((report) => report['status'] == _selectedFilter)
+        .where((report) => report['status'].toString().toLowerCase() == _selectedFilter.toLowerCase())
         .toList();
   }
 
@@ -96,8 +131,55 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
         backgroundColor: const Color(0xFF4CAF50),
         foregroundColor: Colors.white,
         automaticallyImplyLeading: false,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadReports,
+          ),
+        ],
       ),
-      body: Column(
+      body: _isLoading
+          ? const Center(
+        child: CircularProgressIndicator(
+          color: Color(0xFF4CAF50),
+        ),
+      )
+          : _errorMessage.isNotEmpty
+          ? Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.error, size: 64, color: Colors.red[400]),
+            const SizedBox(height: 16),
+            Text(
+              'Error loading reports',
+              style: GoogleFonts.poppins(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: Colors.red[600],
+              ),
+            ),
+            Text(
+              _errorMessage,
+              style: GoogleFonts.poppins(
+                fontSize: 14,
+                color: Colors.grey[600],
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: _loadReports,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF4CAF50),
+                foregroundColor: Colors.white,
+              ),
+              child: Text('Retry', style: GoogleFonts.poppins()),
+            ),
+          ],
+        ),
+      )
+          : Column(
         children: [
           // Stats header
           Container(
@@ -125,7 +207,7 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
                   child: _buildStatCard(
                     'Accepted',
                     _reports
-                        .where((r) => r['status'] == 'Accepted')
+                        .where((r) => r['status'].toString().toLowerCase() == 'accepted')
                         .length
                         .toString(),
                     Icons.check_circle,
@@ -138,9 +220,9 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
                     'Total Points',
                     _reports
                         .fold<int>(
-                          0,
+                      0,
                           (sum, report) => sum + (report['points'] as int),
-                        )
+                    )
                         .toString(),
                     Icons.stars,
                     const Color(0xFFFF9800),
@@ -166,35 +248,33 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
                   child: SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: Row(
-                      children:
-                          _filterOptions.map((filter) {
-                            final isSelected = _selectedFilter == filter;
-                            return Padding(
-                              padding: const EdgeInsets.only(right: 8),
-                              child: FilterChip(
-                                label: Text(
-                                  filter,
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w500,
-                                    color:
-                                        isSelected
-                                            ? Colors.white
-                                            : const Color(0xFF2E7D32),
-                                  ),
-                                ),
-                                selected: isSelected,
-                                onSelected: (selected) {
-                                  setState(() {
-                                    _selectedFilter = filter;
-                                  });
-                                },
-                                selectedColor: const Color(0xFF4CAF50),
-                                backgroundColor: Colors.grey[200],
-                                checkmarkColor: Colors.white,
+                      children: _filterOptions.map((filter) {
+                        final isSelected = _selectedFilter == filter;
+                        return Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: FilterChip(
+                            label: Text(
+                              filter,
+                              style: GoogleFonts.poppins(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: isSelected
+                                    ? Colors.white
+                                    : const Color(0xFF2E7D32),
                               ),
-                            );
-                          }).toList(),
+                            ),
+                            selected: isSelected,
+                            onSelected: (selected) {
+                              setState(() {
+                                _selectedFilter = filter;
+                              });
+                            },
+                            selectedColor: const Color(0xFF4CAF50),
+                            backgroundColor: Colors.grey[200],
+                            checkmarkColor: Colors.white,
+                          ),
+                        );
+                      }).toList(),
                     ),
                   ),
                 ),
@@ -204,40 +284,39 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
 
           // Reports list
           Expanded(
-            child:
-                _filteredReports.isEmpty
-                    ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.inbox, size: 64, color: Colors.grey[400]),
-                          const SizedBox(height: 16),
-                          Text(
-                            'No reports found',
-                            style: GoogleFonts.poppins(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.grey[600],
-                            ),
-                          ),
-                          Text(
-                            'Try adjusting your filter',
-                            style: GoogleFonts.poppins(
-                              fontSize: 14,
-                              color: Colors.grey[500],
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                    : ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
-                      itemCount: _filteredReports.length,
-                      itemBuilder: (context, index) {
-                        final report = _filteredReports[index];
-                        return _buildReportCard(report);
-                      },
+            child: _filteredReports.isEmpty
+                ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.inbox, size: 64, color: Colors.grey[400]),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No reports found',
+                    style: GoogleFonts.poppins(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.grey[600],
                     ),
+                  ),
+                  Text(
+                    'Try adjusting your filter',
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      color: Colors.grey[500],
+                    ),
+                  ),
+                ],
+              ),
+            )
+                : ListView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              itemCount: _filteredReports.length,
+              itemBuilder: (context, index) {
+                final report = _filteredReports[index];
+                return _buildReportCard(report);
+              },
+            ),
           ),
         ],
       ),
@@ -245,11 +324,11 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
   }
 
   Widget _buildStatCard(
-    String title,
-    String value,
-    IconData icon,
-    Color color,
-  ) {
+      String title,
+      String value,
+      IconData icon,
+      Color color,
+      ) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -334,7 +413,7 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
                         ),
                         const Spacer(),
                         Text(
-                          report['id'],
+                          'ID: ${report['id']}',
                           style: GoogleFonts.poppins(
                             fontSize: 12,
                             color: Colors.grey[500],
@@ -373,7 +452,7 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
-                  report['status'],
+                  report['status'].toString().toUpperCase(),
                   style: GoogleFonts.poppins(
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
@@ -382,31 +461,31 @@ class _MyReportsScreenState extends State<MyReportsScreen> {
                 ),
               ),
               const Spacer(),
-              if (report['points'] > 0)
+              if (report['ai_status'] == 1)
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFF9800).withOpacity(0.1),
+                    color: const Color(0xFF4CAF50).withOpacity(0.1),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const Icon(
-                        Icons.stars,
+                        Icons.check_circle,
                         size: 14,
-                        color: Color(0xFFFF9800),
+                        color: Color(0xFF4CAF50),
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        '+${report['points']} pts',
+                        'AI Validated',
                         style: GoogleFonts.poppins(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: const Color(0xFFFF9800),
+                          color: const Color(0xFF4CAF50),
                         ),
                       ),
                     ],
