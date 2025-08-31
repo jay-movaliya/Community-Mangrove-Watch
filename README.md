@@ -10,7 +10,7 @@ MangroveWatch is a community-driven conservation platform designed to protect ma
 
 ### 🔐 User Authentication & Management
 - **Multi-role Registration**: Support for Citizens, NGO Representatives, Government Officials, Local Community Leaders, Students/Academics, Journalists/Media, and Others
-- **Email & Phone Verification**: Secure OTP-based verification system
+- **Email Verification**: Secure OTP-based verification system
 - **Profile Management**: Comprehensive user profiles with role-based access
 
 ### 📱 Incident Reporting System
@@ -19,9 +19,6 @@ MangroveWatch is a community-driven conservation platform designed to protect ma
 - **Incident Categories**: 
   - Illegal Dumping
   - Wood Cutting
-  - Waste Disposal
-  - Construction Activity
-  - Other Environmental Damage
 - **AI-Powered Validation**: Machine learning models automatically validate incident reports using:
   - Computer vision for dumping and cutting detection
   - Geospatial analysis to verify mangrove proximity
@@ -97,7 +94,6 @@ dependencies:
   - **Cutting Detection**: AI model to detect illegal wood cutting activities
   - **Geospatial Validation**: Mangrove area verification using GeoJSON data
   - **Confidence Scoring**: Threshold-based validation (75% confidence minimum)
-- **Deployment**: Cloud-hosted prediction service with CORS support
 
 ## 📱 System Architecture
 
