@@ -6,6 +6,11 @@ A Flutter-based mobile application that empowers communities to protect and moni
 
 MangroveWatch is a community-driven conservation platform designed to protect mangrove ecosystems by enabling citizens, NGOs, government officials, and environmental researchers to report incidents, monitor conservation efforts, and collaborate on protecting these vital coastal ecosystems.
 
+## 📹 Demo Video
+
+Watch the app in action here:  
+👉 [MangroveWatch Demo Video](https://youtu.be/USOniQb2_bM)
+
 ## ✨ Key Features
 
 ### 🔐 User Authentication & Management
@@ -24,6 +29,7 @@ MangroveWatch is a community-driven conservation platform designed to protect ma
   - Geospatial analysis to verify mangrove proximity
   - Confidence scoring to ensure report accuracy
 - **Gamification**: Point-based reward system for active community participation
+
 
 ### 🗺️ Location Services
 - **GPS Integration**: Automatic location detection using device GPS
